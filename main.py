@@ -106,7 +106,8 @@ async def send_menus_to_all():
 # 지정문자가 입력된 서버에 메시지 전송
 @client.event
 async def on_message(message):
-    if message.content in commands:
+    if message.content[0] == '!' and message.content[1:] in commands:
+    # if message.content in commands:
         menus = get_menus()
         await message.channel.send(f"{menus}")
         
