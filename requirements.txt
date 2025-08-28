@@ -1,0 +1,8 @@
+python-dotenv==1.1.1
+
+discord==2.3.2
+selenium==4.35.0
+
+apscheduler==3.11.0
+pytz==2025.2
+holidayskr==0.2.0
