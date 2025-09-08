@@ -1,0 +1,33 @@
+{
+  "restaurants": [
+    {
+      "name": "대륭17차",
+      "url": "https://pf.kakao.com/_xfWxfCxj"
+    },
+    {
+      "name": "대륭18차",
+      "url": "https://pf.kakao.com/_VPzWn"
+    }
+  ],
+  "command_menu": [
+    "밥",
+    "점심",
+    "메뉴"
+  ],
+  "command_help": [
+    "도움",
+    "도움말"
+  ],
+  "command_holidayskip": [
+    "휴일스킵모드전환"
+  ],
+  "lunch_time": [
+    12,
+    50
+  ],
+  "holiday_lock": false,
+  "command_test": [
+    "test",
+    "테스트"
+  ]
+}
