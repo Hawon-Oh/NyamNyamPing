@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 import json
 
 import discord
-from discord.utils import get
 from discord.ext import commands as dis_commands
 
 from selenium import webdriver
@@ -19,22 +18,22 @@ from holidayskr import today_is_holiday
 # 키/토큰 로드
 load_dotenv()
 DISCORD_BOT = os.getenv("discord_bot")
+SERVER_ID = int(os.getenv("server_id"))
 
 # 세팅값 로드
 SETTINGS_PATH = 'settings.json'
 with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
     settings = json.load(f)
+CHANNEL_NAME = settings['channel_name']
 RESTAURANTS = settings['restaurants']
 holiday_lock = settings['holiday_lock'] # True = 휴일엔 자동메시지 skip함
+scheduler_lock = settings['scheduler_lock']  # True = 스케줄러 동작, False면 off
 COMMAND_MENU = settings['command_menu']
 COMMAND_HELP = settings['command_help']
 LUNCH_TIME = list(map(int, settings['lunch_time']))
 COMMAND_TEST = settings['command_test']
 COMMAND_HOLIDAYSKIP = settings['command_holidayskip']
-
-# 미리 크롤링하게 점심시간 1분 빼기
-LUNCH_TIME = ((LUNCH_TIME[0] - 1) % 24, (LUNCH_TIME[1] - 2) % 60) if LUNCH_TIME[1] < 2 else (LUNCH_TIME[0], LUNCH_TIME[1] - 1)
-
+COMMAND_AUTOMSG = settings['command_automsg']
 
 
 menus = ""
@@ -42,7 +41,7 @@ menus = ""
 
 #----------------------------------------
 # 셀레니윰 파트
-#-------------------
+#-----------------------
 
 # headless옵션 설정
 options = webdriver.ChromeOptions()
@@ -84,10 +83,35 @@ def get_menus():
     menus = temp_menus
 
 
+def send_menus_to_specific_channel():
+    global menus
+
+    guild = bot.get_guild(SERVER_ID)
+    channel = discord.utils.get(guild.text_channels, name=CHANNEL_NAME)
+    
+    if not menus:
+        get_menus()
+
+    if channel:
+        bot.loop.create_task(channel.send(menus))
+    else:
+        channel = guild.text_channels[0]
+        bot.loop.create_task(channel.send(f"세팅된 채널명이 옳바르지 않아 첫번째 채널에 출력합니다. \n{menus}"))
+
+
 def clear_menus():
     global menus
     menus = ""
 
+
+
+#-----------------------------
+# 스케줄러 파트
+#---------------------------
+scheduler = AsyncIOScheduler(timezone=timezone('Asia/Seoul'))
+schedule1 = None
+schedule2 = None
+schedule3 = None
 
 
 
@@ -95,25 +119,27 @@ def clear_menus():
 # 디스코드 파트
 #---------------------------
 
-scheduler = AsyncIOScheduler()
-
 # discord 설정
 intents = discord.Intents.all()
 bot = dis_commands.Bot(command_prefix="!", intents=intents)
-
+guild = bot.get_guild(SERVER_ID)
 
 # 봇체크 및 스케줄러
 @bot.event
 async def on_ready():
+    global schedule1, schedule2, schedule3
+    
+    # 미리 크롤링하게 점심시간 1분 빼기
+    pre_lunch = ((LUNCH_TIME[0] - 1) % 24, (LUNCH_TIME[1] - 2) % 60) if LUNCH_TIME[1] < 2 else (LUNCH_TIME[0], LUNCH_TIME[1] - 1)
+
     print(f"봇 로그인됨: {bot.user}")
-
-    scheduler = AsyncIOScheduler(timezone=timezone('Asia/Seoul'))
     # 점심시간에 메뉴가져오기
-    scheduler.add_job(get_menus, 'cron', day_of_week='mon-fri', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
+    schedule1 = scheduler.add_job(get_menus, 'cron', day_of_week='mon-fri', hour=pre_lunch[0], minute=pre_lunch[1])
+    # 특정 서버에 메뉴보내기
+    schedule2 = scheduler.add_job(send_menus_to_specific_channel, 'cron', day_of_week='mon-fri', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
     # 2시간 후 메뉴 지우기
-    scheduler.add_job(clear_menus, 'cron', day_of_week='mon-fri', hour=min(LUNCH_TIME[0] + 2, 24), minute=LUNCH_TIME[1])
+    schedule3 = scheduler.add_job(clear_menus, 'cron', day_of_week='mon-fri', hour=min(LUNCH_TIME[0] + 2, 24), minute=LUNCH_TIME[1])
     scheduler.start()
-
 
 
 # 메뉴판 전송 커맨드
@@ -121,36 +147,19 @@ async def on_ready():
 async def menu(ctx):
     global menus
     if not menus:
-        await ctx.channel.send(f"쉬는 날이거나 점심시간이 아닙니다. ")
-    else:
-        await ctx.channel.send(f"{menus}")
+        get_menus()
 
-
-# # 휴일스킵모드 전환 커맨드
-# @bot.command(name=COMMAND_HOLIDAYSKIP[0], aliases=COMMAND_HOLIDAYSKIP[1:])
-# async def switch_holidayskip(ctx):
-
-#     global holiday_lock
-#     holiday_lock = not holiday_lock
-
-#     if holiday_lock:
-#         await ctx.channel.send("휴일스킵모드 킴")
-#     else:
-#         await ctx.channel.send("휴일스킵모드 끔")
+    await ctx.channel.send(f"{menus}")
 
 
 
-# 휴일스킵모드 전환 커맨드
+# 휴일스킵모드 변경 커맨드
 @bot.command(name=COMMAND_HOLIDAYSKIP[0], aliases=COMMAND_HOLIDAYSKIP[1:])
 async def switch_holidayskip(ctx):
     global holiday_lock
 
-    # JSON 불러오기
-    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-        settings = json.load(f)
-
-    # 값 토글
-    holiday_lock = not settings.get("holiday_lock", False)
+    # 값 변경
+    holiday_lock = not holiday_lock
     settings["holiday_lock"] = holiday_lock
 
     # JSON 저장
@@ -164,26 +173,54 @@ async def switch_holidayskip(ctx):
         await ctx.channel.send("휴일스킵모드 **꺼짐**")
 
 
+# 자동메시지 변경 커맨드
+@bot.command(name=COMMAND_AUTOMSG[0], aliases=COMMAND_AUTOMSG[1:])
+async def switch_scheduler(ctx):
+    global scheduler_lock
+
+    # 값 변경
+    scheduler_lock = not scheduler_lock
+    settings["scheduler_lock"] = scheduler_lock
+
+    # JSON 저장
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
+
+    # 결과 메시지
+    global schedule1, schedule2, schedule3
+
+    # 현재 멈춘 상태면 킴
+    if schedule1.next_run_time is None:
+        schedule1.resume()
+        schedule2.resume()
+        schedule3.resume()
+        await ctx.channel.send("스케줄러 메시지 전송 **켜짐**")
+    else:  # 동작 중이면 끔
+        schedule1.pause()
+        schedule2.pause()
+        schedule3.pause()
+        await ctx.channel.send("스케줄러 메시지 전송 **꺼짐**")
+
 
 # 도움말 커맨드
 @bot.command(name=COMMAND_HELP[0], aliases=COMMAND_HELP[1:])
 async def help(ctx):
     
     msg = (
-    f"봇 명령어\n"
-    f"- {COMMAND_MENU} : 메뉴 확인\n"
-    f"- {COMMAND_HELP} : 도움말\n"
-    f"- {LUNCH_TIME} : 점심 알림 시간\n"
-    f"- {COMMAND_HOLIDAYSKIP} : 주말 스킵 설정\n"
-    f"- {COMMAND_TEST} : 테스트 실행\n\n"
-    f"현재 봇 설정값\n"
+    f"<봇 명령어>\n"
+    f"- **메뉴 확인** : {COMMAND_MENU}\n"
+    f"- **도움말** : {COMMAND_HELP}\n"
+    f"- **점심 알림 시간** : {LUNCH_TIME}\n"
+    f"- **주말스킵 설정** : {COMMAND_HOLIDAYSKIP}\n"
+    f"- **자동문자 설정** : {COMMAND_AUTOMSG}\n\n"
+    f"<현재 봇 설정값>\n"
+    f"- **채널명 설정** : {CHANNEL_NAME}\n"
     f"- **식당 URL 주소** : {RESTAURANTS}\n"
-    f"- **주말 스킵 설정** : {holiday_lock}\n"
+    f"- **휴일스킵 설정** : {holiday_lock}\n"
+    f"- **자동문자 설정** : {scheduler_lock}\n"
     )
     await ctx.channel.send(msg)
     
-
-
 
 # 개발용
 @bot.command(name=COMMAND_TEST[0], aliases=COMMAND_TEST[1:])
@@ -193,62 +230,4 @@ async def test(ctx):
     await ctx.channel.send(menus)
 
 
-
 bot.run(DISCORD_BOT)
-
-
-
-
-
-
-"""
-#bot과 client는 같이 사용 불가 (bot 선택함)
-
-
-client = discord.Client(intents=intents)
-
-
-# 봇이 속한 모든 서버에 메시지 전송하는 함수
-async def send_menus_to_all():
-
-    # 공휴일이면 함수종료
-    if today_is_holiday():
-        # do nothing
-        return
-
-    menus = get_menus()
-
-    # 봇이 속한 서버 목록 확인
-    for guild in client.guilds:
-        # print(f"봇이 속한 서버: {guild.name}, ID: {guild.id}")
-
-        channel = get(guild.text_channels, name='general')
-
-        if channel is not None:
-            await channel.send(menus)
-        else:
-            print(f"{guild.name} 서버에 적절한 텍스트 채널이 없습니다.")
-
-
-
-#지정문자가 입력된 서버에 메시지 전송
-@client.event
-async def on_message(message):
-    if message.content[0] == '!' and message.content[1:] in COMMAND_MENU:
-        menus = get_menus()
-        await message.channel.send(f"{menus}")
-
-
-# 월~금 지정된 시간에 send_menus_to_all 함수 실행
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user}')
-    
-    scheduler = AsyncIOScheduler(timezone=timezone('Asia/Seoul'))
-    scheduler.add_job(send_menus_to_all, 'cron', day_of_week='mon-fri', hour=12, minute=49)
-    scheduler.start()
-
-
-    
-client.run(DISCORD_BOT)
-"""

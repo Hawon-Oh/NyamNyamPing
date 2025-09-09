@@ -1,4 +1,5 @@
 {
+  "channel_name": "general",
   "restaurants": [
     {
       "name": "대륭17차",
@@ -7,25 +8,34 @@
     {
       "name": "대륭18차",
       "url": "https://pf.kakao.com/_VPzWn"
+    },
+    {
+      "name": "에이스하이엔드타워10",
+      "url": "https://pf.kakao.com/_xbVsVK"
     }
   ],
   "command_menu": [
     "밥",
     "점심",
-    "메뉴"
+    "메뉴",
+    "냠냠"
   ],
   "command_help": [
     "도움",
     "도움말"
   ],
   "command_holidayskip": [
-    "휴일스킵모드전환"
+    "휴일스킵"
+  ],
+  "command_automsg": [
+    "자동메시지"
   ],
   "lunch_time": [
     12,
-    50
+    41
   ],
   "holiday_lock": false,
+  "scheduler_lock": false,
   "command_test": [
     "test",
     "테스트"
