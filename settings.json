@@ -1,5 +1,4 @@
 {
-  "channel_name": "general",
   "restaurants": [
     {
       "name": "대륭17차",
@@ -14,9 +13,18 @@
       "url": "https://pf.kakao.com/_xbVsVK"
     }
   ],
+  "lunch_time": [
+    4,
+    16
+  ],
+  "dinner_time": [
+    17,
+    50
+  ],
   "command_menu": [
     "밥",
     "점심",
+    "저녁",
     "메뉴",
     "냠냠"
   ],
@@ -24,18 +32,16 @@
     "도움",
     "도움말"
   ],
-  "command_holidayskip": [
+  "command_holiday_skip": [
     "휴일스킵"
   ],
   "command_automsg": [
-    "자동메시지"
+    "자동메시지",
+    "자동문자"
   ],
-  "lunch_time": [
-    12,
-    41
+  "command_default_channel": [
+    "디폴트채널"
   ],
-  "holiday_lock": false,
-  "scheduler_lock": false,
   "command_test": [
     "test",
     "테스트"
