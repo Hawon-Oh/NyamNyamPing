@@ -14,8 +14,8 @@
     }
   ],
   "lunch_time": [
-    4,
-    16
+    11,
+    50
   ],
   "dinner_time": [
     17,
@@ -40,10 +40,10 @@
     "자동문자"
   ],
   "command_default_channel": [
-    "디폴트채널"
+    "기본채널",
+    "채널변경"
   ],
   "command_test": [
-    "test",
-    "테스트"
+    "test"
   ]
 }

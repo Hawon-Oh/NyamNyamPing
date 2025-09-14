@@ -38,11 +38,10 @@ DINNER_TIME = list(map(int, settings['dinner_time']))
 
 
 
-
-
 def send_menus_to_all():
-    msg = get_menu()
+    menu = get_menu()
     for guild in bot.guilds:
+        msg = ""
         gid = str(guild.id)
         # 해당 서버가 자동메시지 안받으면 패스
         if not servers[gid]['scheduler_on']:
@@ -58,12 +57,14 @@ def send_menus_to_all():
         # 디폴트 채널 정보에 오류가 있거나 메시지 권한이 없다면
         # 대체 가능한 채널 찾기 (text채널 중 보낼 수 있는 첫 채널 선택)
         if not channel or not channel.permissions_for(guild.me).send_messages:
-            msg = "디폴트로 설정된 채널의 정보가 옳바르지 않거나 해당 채널에 메시지를 보낼 수 있는 권한이 없습니다. \n" \
-                + msg
+            msg = f"기본채널로 설정된 **{servers[gid]['channel']}**에 메시지를 보낼 수 없습니다. 해당 채널이 존재하지 않거나 메시지 보낼 권한이 없습니다. \n" \
+                + menu
             for ch in guild.text_channels:
                 if ch.permissions_for(guild.me).send_messages:
                     channel = ch
                     break
+        else:
+            msg = menu
 
         # create_task는 여러서버에 동시에 메시지를 보낼 수 있음.
         # 다만 서버 수가 많으면 rate limit에 막힐 수 있음.
@@ -127,7 +128,7 @@ async def on_guild_remove(guild):
 
     # settings에 해당 서버 ID가 있으면
     # servers 변수와 servers.json에서 삭제
-    if removed_server_id in settings["servers"]:
+    if removed_server_id in servers:
         del servers[removed_server_id]
         with open(SERVERS_PATH, "w") as f:
             json.dump(servers, f, indent=2, ensure_ascii=False)
@@ -140,37 +141,49 @@ async def on_ready():
     print(f"봇 로그인됨: {bot.user}")
 
     global schedule1, schedule2
+    current_guild_ids = {str(guild.id) for guild in bot.guilds}
 
-    # 봇 서버가 꺼진 동안 봇을 초대한 서버가 있을 수 있음.
-    # 새로운 서버가 있다면 servers 변수와 servers.json에 추가
-    added = False
+    # 봇 서버가 꺼진 동안 봇을 초대하거나 추방한 서버가 있을 수 있음
+    # 새로운 서버가 있다면 servers에 추가
+    is_edited = False
     for guild in bot.guilds:
         gid = str(guild.id)
         if gid not in servers:
+            # 초대한 서버의 기본값
             servers[gid] = {
-                "channel": "general",      # 기본값
-                "holiday_skip": False,
+                "channel": "general",      
+                "holiday_skip": True,
                 "scheduler_on": False
             }
             print(f"신규 서버 추가됨: {guild.name} ({gid})")
-            added = True
+            is_edited = True
+        
+    # 봇을 추방(kick)한 서버의 config를 severs에서 제거
+    for gid in list(servers.keys()):
+        if gid not in current_guild_ids:
+            print(f"나간 서버 제거됨: {gid}")
+            del servers[gid]
+            is_edited = True
+
     # 변경사항이 있으면 JSON 파일에 저장
-    if added:
-        with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
+    if is_edited:
+        with open(SERVERS_PATH, 'w', encoding='utf-8') as f:
             json.dump(servers, f, indent=2, ensure_ascii=False)
 
 
-    # 자동메시지 킨 모든서버에 점심 메뉴보내기
-    schedule1 = scheduler.add_job(send_menus_to_all, 'cron', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
-    # 자동메시지 킨 모든서버에 저녁 메뉴보내기
-    schedule2 = scheduler.add_job(send_menus_to_all, 'cron', hour=DINNER_TIME[0], minute=DINNER_TIME[1])
-    scheduler.start()
-
+    # 테스트 할 때 쓰는거 
     # # 자동메시지 킨 모든서버에 점심 메뉴보내기
-    # schedule1 = scheduler.add_job(send_menus_to_all, 'cron', day_of_week='mon-fri', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
+    # schedule1 = scheduler.add_job(send_menus_to_all, 'cron', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
     # # 자동메시지 킨 모든서버에 저녁 메뉴보내기
-    # schedule2 = scheduler.add_job(send_menus_to_all, 'cron', day_of_week='mon-fri', hour=DINNER_TIME[0], minute=DINNER_TIME[1])
+    # schedule2 = scheduler.add_job(send_menus_to_all, 'cron', hour=DINNER_TIME[0], minute=DINNER_TIME[1])
     # scheduler.start()
+    #
+    # 배포용
+    # 자동메시지 킨 모든서버에 점심 메뉴보내기
+    schedule1 = scheduler.add_job(send_menus_to_all, 'cron', day_of_week='mon-fri', hour=LUNCH_TIME[0], minute=LUNCH_TIME[1])
+    # 자동메시지 킨 모든서버에 저녁 메뉴보내기
+    schedule2 = scheduler.add_job(send_menus_to_all, 'cron', day_of_week='mon-fri', hour=DINNER_TIME[0], minute=DINNER_TIME[1])
+    scheduler.start()
 
 
 # 메뉴판 전송 커맨드
@@ -198,6 +211,20 @@ async def switch_holiday_skip(ctx):
         await ctx.channel.send("휴일스킵모드 **켜짐**")
     else:
         await ctx.channel.send("휴일스킵모드 **꺼짐**")
+
+# 자동메시지 받을 채널명 저장
+@bot.command(name=COMMAND_DEFAULT_CHANNEL[0], aliases=COMMAND_DEFAULT_CHANNEL[1:])
+async def change_channel(ctx, channel_name: str):
+    gid = str(ctx.guild.id)
+
+    # 채널 값 변경
+    servers[gid]["channel"] = channel_name
+
+    # servers.json 업데이트
+    with open(SERVERS_PATH, "w", encoding="utf-8") as f:
+        json.dump(servers, f, indent=2, ensure_ascii=False)
+    
+    await ctx.send(f"채널이 **{channel_name}**(으)로 변경됨")
 
 
 # 자동메시지 변경 커맨드
